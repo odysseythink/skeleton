@@ -26,7 +26,8 @@ func (disp *Dispatcher) AfterFunc(d time.Duration, handler CallHandler, arg inte
 	t := new(Timer)
 	t.call = new(CallInfo)
 	t.call.f = handler
-	t.call.arg = arg
+	t.call.args = make([]interface{}, 1)
+	t.call.args = append(t.call.args, arg)
 	t.timerType = timer_onetime
 	t.t = time.AfterFunc(d, func() {
 		disp.ChanTimer <- t
@@ -38,7 +39,8 @@ func (disp *Dispatcher) PeriodFunc(d time.Duration, handler CallHandler, arg int
 	t := new(Timer)
 	t.call = new(CallInfo)
 	t.call.f = handler
-	t.call.arg = arg
+	t.call.args = make([]interface{}, 1)
+	t.call.args = append(t.call.args, arg)
 	t.timerType = timer_period
 	t.period = d
 	t.t = time.AfterFunc(d, func() {
@@ -72,7 +74,7 @@ func (t *Timer) exec(disp *Dispatcher) (err error) {
 			disp.ChanTimer <- t
 		})
 	}
-	t.call.f(t.call.arg)
+	t.call.f.(func(interface{}))(t.call.args[0])
 	err = nil
 	return
 }
