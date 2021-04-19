@@ -70,7 +70,7 @@ func (gate *Gate) Run(closeSig chan bool) {
 		tcpServer.NewAgent = func(conn *TCPConn) ConnAgent {
 			a := &agent{conn: conn, gate: gate}
 			if gate.OnNewAgentCb != nil && gate.ParentSkeleton != nil {
-				gate.ParentSkeleton.AsyncNetworkCallbackExec(gate.OnNewAgentCb, a)
+				gate.ParentSkeleton.asyncNetworkCallbackExec(gate.OnNewAgentCb, a)
 			}
 			return a
 		}
@@ -112,14 +112,14 @@ func (a *agent) Run() {
 				mlog.Infof("unmarshal message error: %v", err)
 				break
 			}
-			a.gate.ParentSkeleton.AsyncNetworkMsgExec(info.msgHandler, a, msg)
+			a.gate.ParentSkeleton.asyncNetworkMsgExec(info.msgHandler, a, msg)
 		}
 	}
 }
 
 func (a *agent) OnClose() {
 	if a.gate.OnCloseAgentCb != nil && a.gate.ParentSkeleton != nil {
-		a.gate.ParentSkeleton.AsyncNetworkCallbackExec(a.gate.OnCloseAgentCb, a)
+		a.gate.ParentSkeleton.asyncNetworkCallbackExec(a.gate.OnCloseAgentCb, a)
 	}
 }
 
@@ -135,7 +135,7 @@ func (a *agent) WriteMsg(msg interface{}) {
 			mlog.Errorf("message %v not register", msgType.Name())
 			return
 		}
-		pkg, err := a.gate.Processor.AssemblePacket(cmd, msg)
+		pkg, err := a.gate.Processor.Marshal(cmd, msg)
 		if err != nil {
 			mlog.Errorf("marshal message %v error: %v", reflect.TypeOf(msg), err)
 			return

@@ -11,10 +11,9 @@ import (
 type CallHandler func(interface{})
 
 type CallInfo struct {
-	f        interface{}
-	args     []interface{}
-	callType int // 0 - normal call; 1 -- network message call ; 2 -- connection callback function
-	argType  reflect.Type
+	f       interface{}
+	args    []interface{}
+	argType reflect.Type
 }
 
 type Skeleton struct {
@@ -92,40 +91,28 @@ func (s *Skeleton) Destroy() {
 	s.wg.Wait()
 }
 
-func (s *Skeleton) AsyncExec(handler, arg interface{}) {
-	fmt.Println("......", "skeleton.go AsyncExec 1:")
+func (s *Skeleton) AsyncExec(handler interface{}, arg interface{}) {
+	s.asyncExec(handler, arg)
+}
+
+func (s *Skeleton) asyncExec(handler interface{}, args ...interface{}) {
 	c := &CallInfo{
-		f:        handler,
-		callType: 0,
-		args:     make([]interface{}, 0),
+		f:    handler,
+		args: make([]interface{}, 0),
 	}
-	c.args = append(c.args, arg)
-	fmt.Println("args len=", len(c.args))
+	for _, arg := range args {
+		c.args = append(c.args, arg)
+	}
+
 	s.chanCall <- c
 }
 
-func (s *Skeleton) AsyncNetworkMsgExec(handler func(Agent, interface{}), agent Agent, arg interface{}) {
-	fmt.Println("......", "skeleton.go AsyncNetworkMsgExec 1:")
-	c := &CallInfo{
-		f:        handler,
-		callType: 1,
-		args:     make([]interface{}, 0),
-	}
-	c.args = append(c.args, agent)
-	c.args = append(c.args, arg)
-	s.chanCall <- c
+func (s *Skeleton) asyncNetworkMsgExec(handler func(Agent, interface{}), agent Agent, arg interface{}) {
+	s.asyncExec(handler, agent, arg)
 }
 
-func (s *Skeleton) AsyncNetworkCallbackExec(handler func(interface{}), agent interface{}) {
-	fmt.Println("......", "skeleton.go AsyncNetworkCallbackExec 1:")
-
-	c := &CallInfo{
-		f:        handler,
-		callType: 2,
-		args:     make([]interface{}, 0),
-	}
-	c.args = append(c.args, agent)
-	s.chanCall <- c
+func (s *Skeleton) asyncNetworkCallbackExec(handler func(interface{}), agent interface{}) {
+	s.asyncExec(handler, agent)
 }
 
 func (s *Skeleton) AfterFunc(d time.Duration, handler CallHandler, arg interface{}) *Timer {
@@ -149,7 +136,6 @@ func (s *Skeleton) run(closeSig chan bool) {
 			if !ok {
 				return
 			}
-			fmt.Println("......", "skeleton.go run 1:")
 			s.exec(call)
 		case t := <-s.dispatcher.ChanTimer:
 			t.exec(s.dispatcher)
@@ -170,17 +156,13 @@ func (s *Skeleton) exec(ci *CallInfo) (err error) {
 		}
 	}()
 
-	fmt.Println("......", "skeleton.go exec 1:")
 	// execute
 	switch ci.f.(type) {
 	case func(interface{}):
-		fmt.Println("......", "skeleton.go exec 2:")
 		ci.f.(func(interface{}))(ci.args[0])
 	case func(interface{}, interface{}):
-		fmt.Println("......", "skeleton.go exec 3:")
 		ci.f.(func(interface{}, interface{}))(ci.args[0], ci.args[1])
 	case func(Agent, interface{}):
-		fmt.Println("......", "skeleton.go exec 4:")
 		ci.f.(func(Agent, interface{}))(ci.args[0].(Agent), ci.args[1])
 	}
 	err = nil

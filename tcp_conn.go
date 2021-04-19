@@ -15,14 +15,12 @@ type TCPConn struct {
 	conn      net.Conn
 	writeChan chan []byte
 	closeFlag bool
-	msgParser *MsgParser
 }
 
-func newTCPConn(conn net.Conn, pendingWriteNum int, msgParser *MsgParser) *TCPConn {
+func newTCPConn(conn net.Conn, pendingWriteNum int) *TCPConn {
 	tcpConn := new(TCPConn)
 	tcpConn.conn = conn
 	tcpConn.writeChan = make(chan []byte, pendingWriteNum)
-	tcpConn.msgParser = msgParser
 
 	go func() {
 		for b := range tcpConn.writeChan {
