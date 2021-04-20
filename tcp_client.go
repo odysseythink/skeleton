@@ -11,9 +11,9 @@ import (
 type TCPClient struct {
 	sync.Mutex
 	Addr            string
-	ConnNum         int
+	ConnNum         uint32
 	ConnectInterval time.Duration
-	PendingWriteNum int
+	PendingWriteNum uint32
 	AutoReconnect   bool
 	NewAgent        func(*TCPConn) ConnAgent
 	conns           ConnSet
@@ -21,7 +21,7 @@ type TCPClient struct {
 	closeFlag       bool
 
 	// msg parser
-	LenMsgLen    int
+	LenMsgLen    uint32
 	MinMsgLen    uint32
 	MaxMsgLen    uint32
 	LittleEndian bool
@@ -30,7 +30,7 @@ type TCPClient struct {
 func (client *TCPClient) Start() {
 	client.init()
 
-	for i := 0; i < client.ConnNum; i++ {
+	for i := 0; i < int(client.ConnNum); i++ {
 		client.wg.Add(1)
 		go client.connect()
 	}
@@ -53,10 +53,10 @@ func (client *TCPClient) init() {
 		mlog.Errorf("invalid PendingWriteNum, reset to %v", client.PendingWriteNum)
 	}
 	if client.NewAgent == nil {
-		mlog.Fatal("NewAgent must not be nil")
+		mlog.Emerg("NewAgent must not be nil")
 	}
 	if client.conns != nil {
-		mlog.Fatal("client is running")
+		mlog.Emerg("client is running")
 	}
 
 	client.conns = make(ConnSet)

@@ -111,7 +111,7 @@ func (s *Skeleton) asyncNetworkMsgExec(handler func(Agent, interface{}), agent A
 	s.asyncExec(handler, agent, arg)
 }
 
-func (s *Skeleton) asyncNetworkCallbackExec(handler func(interface{}), agent interface{}) {
+func (s *Skeleton) asyncNetworkCallbackExec(handler func(Agent), agent interface{}) {
 	s.asyncExec(handler, agent)
 }
 
@@ -164,6 +164,8 @@ func (s *Skeleton) exec(ci *CallInfo) (err error) {
 		ci.f.(func(interface{}, interface{}))(ci.args[0], ci.args[1])
 	case func(Agent, interface{}):
 		ci.f.(func(Agent, interface{}))(ci.args[0].(Agent), ci.args[1])
+	case func(Agent):
+		ci.f.(func(Agent))(ci.args[0].(Agent))
 	}
 	err = nil
 	return

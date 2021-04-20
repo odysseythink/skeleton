@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/name5566/leaf/log"
+	"mlib.com/mlog"
 )
 
 type TCPServer struct {
 	Addr            string
-	MaxConnNum      int
-	PendingWriteNum int
+	MaxConnNum      uint32
+	PendingWriteNum uint32
 	NewAgent        func(*TCPConn) ConnAgent
 	ln              net.Listener
 	conns           ConnSet
@@ -34,7 +34,7 @@ func (server *TCPServer) Start() {
 func (server *TCPServer) init() {
 	ln, err := net.Listen("tcp", server.Addr)
 	if err != nil {
-		mlog.Fatalf("%v", err)
+		mlog.Emergf("%v", err)
 	}
 
 	if server.MaxConnNum <= 0 {
@@ -46,7 +46,7 @@ func (server *TCPServer) init() {
 		mlog.Warningf("invalid PendingWriteNum, reset to %v", server.PendingWriteNum)
 	}
 	if server.NewAgent == nil {
-		mlog.Fatalf("NewAgent must not be nil")
+		mlog.Emerg("NewAgent must not be nil")
 	}
 
 	server.ln = ln
@@ -79,7 +79,7 @@ func (server *TCPServer) run() {
 		tempDelay = 0
 
 		server.mutexConns.Lock()
-		if len(server.conns) >= server.MaxConnNum {
+		if len(server.conns) >= int(server.MaxConnNum) {
 			server.mutexConns.Unlock()
 			conn.Close()
 			mlog.Warning("too many connections")

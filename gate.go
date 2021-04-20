@@ -1,21 +1,33 @@
 package skeleton
 
 import (
+	"net"
 	"reflect"
+	"sync"
+	"time"
 
 	"mlib.com/mlog"
 )
 
+const (
+	defaultKeepAlivePeriod = time.Second * 60
+)
+
 type Gate struct {
-	MaxConnNum      int
-	PendingWriteNum int
+	MaxConnNum      uint32
+	PendingWriteNum uint32
 	MaxMsgLen       uint32
 	Processor       Processor
 
 	// tcp
-	TCPAddr        string
-	LenMsgLen      int
-	LittleEndian   bool
+	TCPAddr           string
+	LenMsgLen         int
+	LittleEndian      bool
+	KeepAliveCheck    bool
+	KeepAlivePeriod   time.Duration
+	agentsIdleTime    map[*agent]time.Duration
+	agentsIdleTimeMux sync.Mutex
+
 	messagesInfo   map[uint32]*MsgInfo
 	messagesCmd    map[reflect.Type]uint32
 	OnNewAgentCb   OnNewAgentCallback
@@ -29,8 +41,23 @@ type MsgInfo struct {
 	msgRawHandler MsgHandler
 }
 
-type OnNewAgentCallback func(interface{})
+type OnNewAgentCallback func(Agent)
 type MsgHandler func(Agent, interface{})
+
+func keepAlive(arg interface{}) {
+	if _, ok := arg.(*Gate); ok {
+		g := arg.(*Gate)
+		g.agentsIdleTimeMux.Lock()
+		for k := range g.agentsIdleTime {
+			g.agentsIdleTime[k] += time.Second * 5
+			if g.agentsIdleTime[k] >= g.KeepAlivePeriod {
+				k.Close()
+				delete(g.agentsIdleTime, k)
+			}
+		}
+		g.agentsIdleTimeMux.Unlock()
+	}
+}
 
 func (gate *Gate) Register(cmd uint32, msg interface{}, f MsgHandler) {
 	if gate.messagesInfo == nil {
@@ -41,13 +68,13 @@ func (gate *Gate) Register(cmd uint32, msg interface{}, f MsgHandler) {
 	}
 	msgType := reflect.TypeOf(msg)
 	if msgType == nil || msgType.Kind() != reflect.Ptr {
-		mlog.Fatal("message pointer required")
+		mlog.Emerg("message pointer required")
 	}
 	if _, ok := gate.messagesInfo[cmd]; ok {
-		mlog.Fatal("message cmd=0x%x is already registered", cmd)
+		mlog.Emergf("message cmd=0x%x is already registered", cmd)
 	}
 	if _, ok := gate.messagesCmd[msgType]; ok {
-		mlog.Fatal("message %v is already registered", msgType.Name())
+		mlog.Emergf("message %v is already registered", msgType.Name())
 	}
 
 	i := new(MsgInfo)
@@ -72,7 +99,22 @@ func (gate *Gate) Run(closeSig chan bool) {
 			if gate.OnNewAgentCb != nil && gate.ParentSkeleton != nil {
 				gate.ParentSkeleton.asyncNetworkCallbackExec(gate.OnNewAgentCb, a)
 			}
+			if gate.KeepAliveCheck {
+				if gate.agentsIdleTime == nil {
+					gate.agentsIdleTime = make(map[*agent]time.Duration)
+				}
+				gate.agentsIdleTimeMux.Lock()
+				gate.agentsIdleTime[a] = 0
+				gate.agentsIdleTimeMux.Unlock()
+			}
+
 			return a
+		}
+		if gate.KeepAliveCheck && gate.ParentSkeleton != nil {
+			if gate.KeepAlivePeriod == 0 {
+				gate.KeepAlivePeriod = defaultKeepAlivePeriod
+			}
+			gate.ParentSkeleton.PeriodFunc(time.Second*5, keepAlive, gate)
 		}
 	}
 
@@ -102,6 +144,12 @@ func (a *agent) Run() {
 			mlog.Infof("read message: %v", err)
 			break
 		}
+		a.gate.agentsIdleTimeMux.Lock()
+		a.gate.agentsIdleTime[a] = 0
+		a.gate.agentsIdleTimeMux.Unlock()
+		if data == nil && cmd == 0 {
+			continue
+		}
 
 		info, ok := a.gate.messagesInfo[cmd]
 		if !ok {
@@ -120,6 +168,11 @@ func (a *agent) Run() {
 func (a *agent) OnClose() {
 	if a.gate.OnCloseAgentCb != nil && a.gate.ParentSkeleton != nil {
 		a.gate.ParentSkeleton.asyncNetworkCallbackExec(a.gate.OnCloseAgentCb, a)
+	}
+	if a.gate.KeepAliveCheck && a.gate.agentsIdleTime != nil {
+		a.gate.agentsIdleTimeMux.Lock()
+		delete(a.gate.agentsIdleTime, a)
+		a.gate.agentsIdleTimeMux.Unlock()
 	}
 }
 
@@ -158,4 +211,12 @@ func (a *agent) UserData() interface{} {
 
 func (a *agent) SetUserData(data interface{}) {
 	a.userData = data
+}
+
+func (a *agent) LocalAddr() net.Addr {
+	return a.LocalAddr()
+}
+
+func (a *agent) RemoteAddr() net.Addr {
+	return a.RemoteAddr()
 }
